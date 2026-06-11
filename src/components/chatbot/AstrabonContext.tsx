@@ -47,10 +47,6 @@ interface AstrabonContextType {
   leadStep: 'name' | 'businessName' | 'email' | 'phone' | 'done';
   setLeadStep: (s: 'name' | 'businessName' | 'email' | 'phone' | 'done') => void;
 
-  // Typing indicator
-  isTyping: boolean;
-  setIsTyping: (v: boolean) => void;
-
   // Message count
   messageCount: number;
 }
@@ -75,7 +71,6 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
   const [leadData, setLeadData] = useState<LeadData>({});
   const [isCapturingLead, setIsCapturingLead] = useState(false);
   const [leadStep, setLeadStep] = useState<'name' | 'businessName' | 'email' | 'phone' | 'done'>('name');
-  const [isTyping, setIsTyping] = useState(false);
 
   // Hydrate session from localStorage on mount
   useEffect(() => {
@@ -134,7 +129,6 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
       leadData, setLeadData,
       isCapturingLead, setIsCapturingLead,
       leadStep, setLeadStep,
-      isTyping, setIsTyping,
       messageCount,
     }}>
       {children}

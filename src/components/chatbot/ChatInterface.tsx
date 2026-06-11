@@ -22,34 +22,6 @@ const WELCOME_PROMPTS = [
   { label: 'Find coffee essentials', icon: '☕' },
 ];
 
-function TypingIndicator({ toolName }: { toolName?: string }) {
-  return (
-    <div className="flex items-end gap-2">
-      <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0">
-        <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
-      </div>
-      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3">
-        {toolName ? (
-          <p className="text-[11px] text-primary font-medium animate-pulse">
-            {toolName === 'search_products' || toolName === 'recommend_products'
-              ? 'Searching catalog…'
-              : toolName === 'suggest_bundles'
-              ? 'Building bundle…'
-              : toolName === 'search_support'
-              ? 'Looking up support…'
-              : 'Working…'}
-          </p>
-        ) : (
-          <div className="flex gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function ChatInterface() {
   const {
@@ -58,13 +30,11 @@ export function ChatInterface() {
     sessionId, setSessionId,
     agentStatus, setAgentStatus,
     isStreaming, setIsStreaming,
-    isTyping, setIsTyping,
-    buyerType,
+    buyerType, setBuyerType,
   } = useAstrabon();
 
   const [inputValue, setInputValue] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
-  const [activeToolName, setActiveToolName] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -74,7 +44,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatHistory, isTyping, scrollToBottom]);
+  }, [chatHistory, scrollToBottom]);
 
   // Abort on unmount
   useEffect(() => () => { abortRef.current?.abort(); }, []);
@@ -118,15 +88,12 @@ export function ChatInterface() {
   }, [isCapturingLead, sessionId, isStreaming]);
 
   const sendAgentMessage = useCallback(async (text: string) => {
-    setIsTyping(true);
     setIsStreaming(true);
-    setActiveToolName(undefined);
 
     // Add placeholder bot bubble and capture the ID returned by addMessage
     const botId = addMessage({ sender: 'bot', text: '', type: 'text' });
 
     let streamedText = '';
-    let finalSessionId = sessionId;
 
     abortRef.current = new AbortController();
 
@@ -138,12 +105,6 @@ export function ChatInterface() {
             streamedText += event.data.content;
             updateMessage(botId, { text: streamedText });
           }
-          if (event.event === 'tool_start' && typeof event.data.name === 'string') {
-            setActiveToolName(event.data.name);
-          }
-          if (event.event === 'tool_end') {
-            setActiveToolName(undefined);
-          }
           if (event.event === 'products' && Array.isArray(event.data.items)) {
             const products = mapAgentProducts(event.data.items as AgentProductCard[]);
             updateMessage(botId, { type: 'product-cards', products });
@@ -151,7 +112,6 @@ export function ChatInterface() {
           if (event.event === 'done') {
             const sid = event.data.session_id as string | undefined;
             if (sid) {
-              finalSessionId = sid;
               setSessionId(sid);
             }
             const finalMsg = event.data.message as string | undefined;
@@ -170,11 +130,9 @@ export function ChatInterface() {
       const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
       updateMessage(botId, { text: msg });
     } finally {
-      setIsTyping(false);
       setIsStreaming(false);
-      setActiveToolName(undefined);
     }
-  }, [sessionId, setSessionId, addMessage, updateMessage, setIsTyping, setIsStreaming]);
+  }, [sessionId, setSessionId, addMessage, updateMessage, setIsStreaming]);
 
   const handleSend = useCallback((text?: string) => {
     const msg = (text ?? inputValue).trim();
@@ -185,12 +143,16 @@ export function ChatInterface() {
     // Lead capture short-circuit — messages handled by LeadCaptureFlow form
     if (isCapturingLead) return;
 
+    // Detect commercial buyer type so LeadCaptureFlow shows the businessName step
+    const commercialKw = ['restaurant', 'café', 'cafe', 'hotel', 'business', 'wholesale'];
+    if (commercialKw.some(k => msg.toLowerCase().includes(k))) {
+      setBuyerType('restaurant');
+    }
+
     // High-intent lead trigger
     const leadTrigger = detectLeadTrigger(msg);
     if (leadTrigger === 'high') {
-      setIsTyping(true);
       setTimeout(() => {
-        setIsTyping(false);
         setIsCapturingLead(true);
         setFlowState('lead-capture');
         addMessage({
@@ -205,9 +167,7 @@ export function ChatInterface() {
     // Connect-to-team trigger
     const connectKw = ['connect', 'team', 'speak to', 'contact', 'inquire', 'collect my details'];
     if (connectKw.some(k => msg.toLowerCase().includes(k))) {
-      setIsTyping(true);
       setTimeout(() => {
-        setIsTyping(false);
         setIsCapturingLead(true);
         setFlowState('lead-capture');
         addMessage({
@@ -220,16 +180,14 @@ export function ChatInterface() {
     }
 
     sendAgentMessage(msg);
-  }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setIsTyping, setIsCapturingLead, setFlowState]);
+  }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setBuyerType, setIsCapturingLead, setFlowState]);
 
   const handleOptionClick = (option: string, messageId: string) => {
     setSelectedOptions(prev => new Set(prev).add(messageId));
 
     if (['connect', 'team', 'collect my details', 'speak to'].some(k => option.toLowerCase().includes(k))) {
       addMessage({ sender: 'user', text: option, type: 'text' });
-      setIsTyping(true);
       setTimeout(() => {
-        setIsTyping(false);
         setIsCapturingLead(true);
         setFlowState('lead-capture');
         addMessage({ sender: 'bot', text: "Let's get your details so the team can follow up. What's your name?", type: 'text' });
@@ -241,9 +199,7 @@ export function ChatInterface() {
 
   const handleInquire = (product: Product) => {
     addMessage({ sender: 'user', text: `I'm interested in: ${product.name}`, type: 'text' });
-    setIsTyping(true);
     setTimeout(() => {
-      setIsTyping(false);
       setIsCapturingLead(true);
       setFlowState('lead-capture');
       setProductCategory(product.category);
@@ -331,8 +287,8 @@ export function ChatInterface() {
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
             >
-              {/* Bot text / options bubble */}
-              {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && (
+              {/* Bot text / options bubble — skip the empty placeholder while streaming */}
+              {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && msg.text && (
                 <div className="flex items-end gap-2">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
                     <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
@@ -405,28 +361,10 @@ export function ChatInterface() {
                 </div>
               )}
 
-              {/* Lead form */}
-              {msg.type === 'lead-form' && (
-                <div className="w-full mt-2">
-                  <LeadCaptureFlow />
-                </div>
-              )}
+
             </motion.div>
           );
         })}
-
-        {/* Typing / streaming indicator */}
-        <AnimatePresence>
-          {isTyping && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-            >
-              <TypingIndicator toolName={activeToolName} />
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Lead capture form (active) */}
         {isCapturingLead && <LeadCaptureFlow />}

@@ -112,7 +112,9 @@ export function ProductCard({ product, onInquire, compact = false }: ProductCard
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border-subtle text-text-muted text-[11px] font-medium hover:border-primary/40 hover:text-primary transition-all"
             onClick={() => {
               if (product.productUrl) {
-                window.open(product.productUrl, '_blank', 'noopener,noreferrer');
+                // Use window.top so the link escapes the embed iframe on client sites
+                const target = window.top ?? window;
+                target.open(product.productUrl, '_blank', 'noopener,noreferrer');
               }
             }}
             disabled={!product.productUrl}

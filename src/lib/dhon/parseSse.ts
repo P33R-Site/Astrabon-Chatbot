@@ -25,6 +25,16 @@ export async function* parseSseStream(
         }
       }
     }
+
+    // Flush any trailing chunk not terminated by \n\n
+    const remaining = buffer.trim();
+    if (remaining.startsWith('data:')) {
+      try {
+        yield JSON.parse(remaining.slice(5).trim()) as StreamEvent;
+      } catch {
+        // skip malformed
+      }
+    }
   } finally {
     reader.releaseLock();
   }

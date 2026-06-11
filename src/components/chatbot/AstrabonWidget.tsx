@@ -46,7 +46,7 @@ function WidgetContent() {
     'bg-warning animate-pulse';
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9000] flex flex-col items-end font-sans">
+    <div className="fixed bottom-6 right-6 z-[9000] flex flex-col items-end font-sans" style={{ pointerEvents: 'auto' }}>
       <AnimatePresence>
         {isExpanded && (
           <motion.div
