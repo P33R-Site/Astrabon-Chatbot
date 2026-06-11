@@ -8,6 +8,7 @@ export interface Product {
   image: string;
   badge?: string;
   priceRange?: string;
+  productUrl?: string;
 }
 
 export type ProductCategory =

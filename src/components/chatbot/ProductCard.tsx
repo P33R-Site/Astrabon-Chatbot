@@ -1,8 +1,10 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import type { Product } from '@/types';
 import { Eye, MessageSquare, Tag, Star } from 'lucide-react';
+import { PRODUCT_IMAGE_PLACEHOLDER } from '@/lib/dhon/mapProduct';
 
 interface ProductCardProps {
   product: Product;
@@ -24,19 +26,42 @@ const BADGE_COLORS: Record<string, string> = {
 };
 
 export function ProductCard({ product, onInquire, compact = false }: ProductCardProps) {
-  const badgeClass = product.badge ? (BADGE_COLORS[product.badge] || 'bg-primary/20 text-primary border-primary/30') : '';
+  const [imageSrc, setImageSrc] = useState(product.image || PRODUCT_IMAGE_PLACEHOLDER);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Reset image state when product changes
+  useEffect(() => {
+    setImageSrc(product.image || PRODUCT_IMAGE_PLACEHOLDER);
+    setImageLoaded(false);
+  }, [product.id, product.image]);
+
+  const badgeClass = product.badge
+    ? (BADGE_COLORS[product.badge] || 'bg-primary/20 text-primary border-primary/30')
+    : '';
 
   return (
     <motion.div
       whileHover={{ y: -3 }}
       className="glass-card rounded-2xl overflow-hidden border border-border-subtle hover:border-primary/30 transition-all duration-300 group flex flex-col"
-      style={{ minWidth: compact ? '220px' : '240px', maxWidth: compact ? '240px' : '260px' }}
+      style={{ minWidth: compact ? '180px' : '200px', maxWidth: compact ? '200px' : '220px' }}
     >
       {/* Image */}
-      <div className="relative h-40 overflow-hidden">
+      <div className="relative h-40 overflow-hidden bg-surface-alt">
+        {/* Skeleton shimmer — visible until image settles */}
+        <div
+          className={`absolute inset-0 bg-surface-alt transition-opacity duration-300 ${imageLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100 animate-pulse'}`}
+          aria-hidden
+        />
         <img
-          src={product.image}
+          src={imageSrc}
           alt={product.name}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => {
+            if (imageSrc !== PRODUCT_IMAGE_PLACEHOLDER) {
+              setImageSrc(PRODUCT_IMAGE_PLACEHOLDER);
+              setImageLoaded(true);
+            }
+          }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-surface/80 via-transparent to-transparent" />
@@ -48,7 +73,7 @@ export function ProductCard({ product, onInquire, compact = false }: ProductCard
           </div>
         )}
 
-        {/* Price range */}
+        {/* Price */}
         {product.priceRange && (
           <div className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10">
             <span className="text-white/80 text-[11px] font-medium">{product.priceRange}</span>
@@ -85,7 +110,12 @@ export function ProductCard({ product, onInquire, compact = false }: ProductCard
         <div className="flex gap-2 mt-auto">
           <button
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border-subtle text-text-muted text-[11px] font-medium hover:border-primary/40 hover:text-primary transition-all"
-            onClick={() => window.open('#', '_blank')}
+            onClick={() => {
+              if (product.productUrl) {
+                window.open(product.productUrl, '_blank', 'noopener,noreferrer');
+              }
+            }}
+            disabled={!product.productUrl}
           >
             <Eye className="w-3.5 h-3.5" />
             View

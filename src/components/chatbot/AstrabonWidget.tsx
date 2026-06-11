@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Minimize2, Maximize2, Play, RotateCcw } from 'lucide-react';
+import { MessageSquare, X, Minimize2, Maximize2 } from 'lucide-react';
 import { AstrabonProvider, useAstrabon } from './AstrabonContext';
 import { ChatInterface } from './ChatInterface';
 
@@ -10,9 +10,7 @@ import { ChatInterface } from './ChatInterface';
 function WidgetContent() {
   const {
     isExpanded, setIsExpanded,
-    chatHistory, clearHistory,
-    isDemoMode, setIsDemoMode,
-    setDemoStep, demoStep,
+    agentStatus,
   } = useAstrabon();
 
   const [showLoader, setShowLoader] = useState(false);
@@ -23,7 +21,6 @@ function WidgetContent() {
     const handleOpen = (e: CustomEvent) => {
       setIsExpanded(true);
       if (e.detail?.prompt) {
-        // Small delay to let widget open, then fire the prompt
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('astrabon:send-prompt', { detail: { prompt: e.detail.prompt } }));
         }, 400);
@@ -36,23 +33,17 @@ function WidgetContent() {
   const handleExpand = () => {
     setShowLoader(true);
     setIsExpanded(true);
-    setTimeout(() => setShowLoader(false), 1800);
+    setTimeout(() => setShowLoader(false), 1200);
   };
 
   const handleClose = () => {
     setIsExpanded(false);
   };
 
-  const toggleDemoMode = () => {
-    if (isDemoMode) {
-      setIsDemoMode(false);
-      clearHistory();
-    } else {
-      clearHistory();
-      setIsDemoMode(true);
-      setDemoStep(0);
-    }
-  };
+  const statusDot =
+    agentStatus === 'ready' ? 'bg-success' :
+    agentStatus === 'unavailable' ? 'bg-error' :
+    'bg-warning animate-pulse';
 
   return (
     <div className="fixed bottom-6 right-6 z-[9000] flex flex-col items-end font-sans">
@@ -76,32 +67,15 @@ function WidgetContent() {
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full border border-primary/25 overflow-hidden relative">
                   <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-success border-2 border-bg" />
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-bg ${statusDot}`} />
                 </div>
                 <div>
-                  <h1 className="text-text-primary font-serif text-base tracking-wide leading-none mb-0.5">
-                    {isDemoMode ? 'Demo Mode' : 'Dhon'}
-                  </h1>
-                  <p className={`text-[10px] uppercase tracking-widest font-medium ${isDemoMode ? 'text-warning' : 'text-primary'}`}>
-                    {isDemoMode ? 'Powered by PRV8' : 'Powered by PRV8 · Online'}
-                  </p>
+                  <h1 className="text-text-primary font-serif text-base tracking-wide leading-none mb-0.5">Dhon</h1>
+                  <p className="text-[10px] uppercase tracking-widest font-medium text-primary">Powered by PRV8 · Online</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
-                {/* Demo toggle */}
-                <button
-                  onClick={toggleDemoMode}
-                  className={`px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest font-bold transition-all border ${
-                    isDemoMode
-                      ? 'bg-warning/20 text-warning border-warning/40'
-                      : 'bg-surface-100 text-text-muted border-border-subtle hover:text-text-primary'
-                  }`}
-                >
-                  {isDemoMode ? <RotateCcw className="w-3 h-3 inline mr-1" /> : <Play className="w-3 h-3 inline mr-1" />}
-                  {isDemoMode ? 'Reset' : 'Demo'}
-                </button>
-
                 {/* Fullscreen toggle (desktop only) */}
                 <button
                   onClick={() => setIsFullscreen(!isFullscreen)}
@@ -122,18 +96,6 @@ function WidgetContent() {
 
             {/* Body */}
             <div className="flex-1 relative overflow-hidden">
-              {/* Demo mode ambient background */}
-              {isDemoMode && (
-                <div className="absolute inset-0 z-0 pointer-events-none">
-                  <img
-                    src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?q=80&w=1200&auto=format&fit=crop"
-                    alt="Kitchen background"
-                    className="w-full h-full object-cover opacity-[0.07]"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-b from-bg/80 to-bg/95" />
-                </div>
-              )}
-
               <AnimatePresence mode="wait">
                 {showLoader ? (
                   <motion.div
@@ -178,22 +140,15 @@ function WidgetContent() {
             onClick={handleExpand}
             className="relative flex items-center gap-3 bg-surface border border-border-subtle pl-2.5 pr-5 py-2.5 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.4)] hover:border-primary/40 hover:shadow-[0_8px_40px_rgba(200,152,94,0.25)] transition-all duration-300 group"
           >
-            {/* Avatar / Icon */}
             <div className="w-10 h-10 rounded-full border border-primary/25 shadow-md overflow-hidden relative group-hover:ring-2 group-hover:ring-primary/30 transition-all">
               <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface" />
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${statusDot}`} />
             </div>
-
             <div className="flex flex-col text-left">
               <span className="text-text-primary text-sm font-semibold leading-none mb-0.5">Dhon</span>
               <span className="text-[10px] text-primary uppercase tracking-widest font-bold">Chat with us</span>
             </div>
-
-
-
-
-
-
+            <MessageSquare className="sr-only" />
           </motion.button>
         )}
       </AnimatePresence>

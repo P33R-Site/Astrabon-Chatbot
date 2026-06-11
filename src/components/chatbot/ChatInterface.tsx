@@ -2,12 +2,16 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic } from 'lucide-react';
+import { Send, Mic, AlertTriangle } from 'lucide-react';
 import { useAstrabon } from './AstrabonContext';
 import { ProductCarousel } from './ProductCarousel';
 import { LeadCaptureFlow } from './LeadCaptureFlow';
-import { generateBotResponse, detectLeadTrigger, DEMO_SCRIPT } from '@/data/chat-scripts';
-import type { Product } from '@/types';
+import { detectLeadTrigger } from '@/lib/leadTriggers';
+import { MarkdownText } from './MarkdownText';
+import { checkHealth, streamChat, getSessionMessages } from '@/lib/dhon/client';
+import { mapAgentProducts } from '@/lib/dhon/mapProduct';
+import type { AgentProductCard } from '@/lib/dhon/types';
+import type { ChatMessage, Product } from '@/types';
 
 const WELCOME_PROMPTS = [
   { label: 'Help me find cookware', icon: '🍳' },
@@ -18,18 +22,30 @@ const WELCOME_PROMPTS = [
   { label: 'Find coffee essentials', icon: '☕' },
 ];
 
-function TypingIndicator() {
+function TypingIndicator({ toolName }: { toolName?: string }) {
   return (
     <div className="flex items-end gap-2">
       <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0">
         <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
       </div>
       <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3">
-        <div className="flex gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-          <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-          <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
-        </div>
+        {toolName ? (
+          <p className="text-[11px] text-primary font-medium animate-pulse">
+            {toolName === 'search_products' || toolName === 'recommend_products'
+              ? 'Searching catalog…'
+              : toolName === 'suggest_bundles'
+              ? 'Building bundle…'
+              : toolName === 'search_support'
+              ? 'Looking up support…'
+              : 'Working…'}
+          </p>
+        ) : (
+          <div className="flex gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -37,17 +53,20 @@ function TypingIndicator() {
 
 export function ChatInterface() {
   const {
-    chatHistory, addMessage, flowState, setFlowState,
-    buyerType, setBuyerType, productCategory, setProductCategory,
-    priority, setPriority, isTyping, setIsTyping,
-    lastBotQuestion, isDemoMode, demoStep, setDemoStep,
-    isCapturingLead, setIsCapturingLead, messageCount,
+    chatHistory, addMessage, updateMessage, isCapturingLead,
+    setIsCapturingLead, setFlowState, setProductCategory,
+    sessionId, setSessionId,
+    agentStatus, setAgentStatus,
+    isStreaming, setIsStreaming,
+    isTyping, setIsTyping,
+    buyerType,
   } = useAstrabon();
 
   const [inputValue, setInputValue] = useState('');
-  // Track which messages have had their options selected
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
+  const [activeToolName, setActiveToolName] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -57,104 +76,116 @@ export function ChatInterface() {
     scrollToBottom();
   }, [chatHistory, isTyping, scrollToBottom]);
 
+  // Abort on unmount
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  // Health check on mount
+  useEffect(() => {
+    checkHealth().then(ok => {
+      setAgentStatus(ok ? 'ready' : 'unavailable');
+    });
+  }, [setAgentStatus]);
+
+  // Restore session history on mount (if sessionId stored)
+  useEffect(() => {
+    if (!sessionId || chatHistory.length > 0) return;
+    getSessionMessages(sessionId).then(data => {
+      data.messages.forEach(m => {
+        if (m.role === 'user' || m.role === 'assistant') {
+          addMessage({
+            sender: m.role === 'user' ? 'user' : 'bot',
+            text: m.content,
+            type: 'text',
+          });
+        }
+      });
+    }).catch(() => {
+      // Session not found — clear stale id
+      setSessionId(null);
+    });
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Listen for external prompts (from category cards, hero CTA)
   useEffect(() => {
     const handleExternalPrompt = (e: CustomEvent) => {
-      if (e.detail?.prompt) {
-        handleSend(e.detail.prompt);
-      }
+      if (e.detail?.prompt) handleSend(e.detail.prompt);
     };
     window.addEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
     return () => window.removeEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowState, buyerType, productCategory, priority, messageCount, lastBotQuestion, isCapturingLead]);
+  }, [isCapturingLead, sessionId, isStreaming]);
 
-  const simulateBotResponse = useCallback(
-    (text: string) => {
-      setIsTyping(true);
-      const delay = Math.min(600 + text.length * 12, 2200);
-      setTimeout(() => {
-        setIsTyping(false);
-        const response = generateBotResponse(text, {
-          flowState,
-          buyerType,
-          category: productCategory,
-          priority,
-          messageCount,
-          lastBotQuestion,
-        });
-
-        // Update flow state from response
-        if (response.type === 'lead-form' || response.leadForm) {
-          setIsCapturingLead(true);
-          setFlowState('lead-capture');
-        } else if (response.nextFlowState) {
-          setFlowState(response.nextFlowState as typeof flowState);
-        }
-
-        addMessage({
-          sender: 'bot',
-          type: response.type as ChatMessage['type'],
-          text: response.text,
-          options: response.options,
-          products: response.products,
-        });
-
-        // Detect buyer type from intent
-        const lower = text.toLowerCase();
-        if (lower.includes('café') || lower.includes('cafe') || lower.includes('coffee shop')) setBuyerType('cafe');
-        else if (lower.includes('restaurant') || lower.includes('bistro')) setBuyerType('restaurant');
-        else if (lower.includes('hotel') || lower.includes('resort')) setBuyerType('hotel');
-        else if (lower.includes('home') || lower.includes('everyday') || lower.includes('personal')) setBuyerType('home');
-        else if (lower.includes('gift')) setBuyerType('gift');
-        else if (lower.includes('office')) setBuyerType('office');
-
-      }, delay);
-    },
-    [flowState, buyerType, productCategory, priority, messageCount, lastBotQuestion, addMessage, setIsTyping, setFlowState, setIsCapturingLead, setBuyerType]
-  );
-
-  // Demo mode runner
-  const runDemoStep = useCallback(async () => {
-    if (demoStep >= DEMO_SCRIPT.length) return;
-    const step = DEMO_SCRIPT[demoStep];
-
-    // Type user message with delay
-    let typed = '';
-    for (const char of step.userText) {
-      await new Promise(r => setTimeout(r, 35));
-      typed += char;
-      setInputValue(typed);
-    }
-    await new Promise(r => setTimeout(r, 400));
-    setInputValue('');
-
-    addMessage({ sender: 'user', text: step.userText, type: 'text' });
+  const sendAgentMessage = useCallback(async (text: string) => {
     setIsTyping(true);
+    setIsStreaming(true);
+    setActiveToolName(undefined);
 
-    setTimeout(() => {
+    // Add placeholder bot bubble and capture the ID returned by addMessage
+    const botId = addMessage({ sender: 'bot', text: '', type: 'text' });
+
+    let streamedText = '';
+    let finalSessionId = sessionId;
+
+    abortRef.current = new AbortController();
+
+    try {
+      await streamChat(
+        { message: text, session_id: sessionId ?? undefined },
+        (event) => {
+          if (event.event === 'token' && typeof event.data.content === 'string') {
+            streamedText += event.data.content;
+            updateMessage(botId, { text: streamedText });
+          }
+          if (event.event === 'tool_start' && typeof event.data.name === 'string') {
+            setActiveToolName(event.data.name);
+          }
+          if (event.event === 'tool_end') {
+            setActiveToolName(undefined);
+          }
+          if (event.event === 'products' && Array.isArray(event.data.items)) {
+            const products = mapAgentProducts(event.data.items as AgentProductCard[]);
+            updateMessage(botId, { type: 'product-cards', products });
+          }
+          if (event.event === 'done') {
+            const sid = event.data.session_id as string | undefined;
+            if (sid) {
+              finalSessionId = sid;
+              setSessionId(sid);
+            }
+            const finalMsg = event.data.message as string | undefined;
+            if (!streamedText && finalMsg) {
+              updateMessage(botId, { text: finalMsg });
+            }
+          }
+          if (event.event === 'error') {
+            throw new Error(String(event.data.detail ?? 'Agent error'));
+          }
+        },
+        abortRef.current.signal,
+      );
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      updateMessage(botId, { text: msg });
+    } finally {
       setIsTyping(false);
-      addMessage({
-        sender: 'bot',
-        text: step.botText,
-        type: step.type,
-        options: 'options' in step ? step.options : undefined,
-        products: 'products' in step ? step.products as Product[] : undefined,
-      });
-      setDemoStep(demoStep + 1);
-    }, 1500);
-  }, [demoStep, addMessage, setIsTyping, setDemoStep]);
+      setIsStreaming(false);
+      setActiveToolName(undefined);
+    }
+  }, [sessionId, setSessionId, addMessage, updateMessage, setIsTyping, setIsStreaming]);
 
-  const handleSend = (text?: string) => {
+  const handleSend = useCallback((text?: string) => {
     const msg = (text ?? inputValue).trim();
-    if (!msg) return;
+    if (!msg || isStreaming) return;
     setInputValue('');
     addMessage({ sender: 'user', text: msg, type: 'text' });
 
-    // Lead capture short-circuit
+    // Lead capture short-circuit — messages handled by LeadCaptureFlow form
     if (isCapturingLead) return;
 
-    // Check for soft lead triggers (medium/high intent)
+    // High-intent lead trigger
     const leadTrigger = detectLeadTrigger(msg);
     if (leadTrigger === 'high') {
       setIsTyping(true);
@@ -167,13 +198,13 @@ export function ChatInterface() {
           text: "Great! I can pass this to the Astrabon team so they can help you quickly. Please share:\n\nYour name",
           type: 'text',
         });
-      }, 800);
+      }, 400);
       return;
     }
 
-    // Check if it's a connect-to-team trigger
-    if (['connect', 'team', 'speak to', 'contact', 'inquire', 'collect my details']
-      .some(k => msg.toLowerCase().includes(k))) {
+    // Connect-to-team trigger
+    const connectKw = ['connect', 'team', 'speak to', 'contact', 'inquire', 'collect my details'];
+    if (connectKw.some(k => msg.toLowerCase().includes(k))) {
       setIsTyping(true);
       setTimeout(() => {
         setIsTyping(false);
@@ -184,26 +215,25 @@ export function ChatInterface() {
           text: "Great! I can pass this to the Astrabon team so they can help you quickly. Please share:\n\nYour name",
           type: 'text',
         });
-      }, 800);
+      }, 400);
       return;
     }
 
-    simulateBotResponse(msg);
-  };
+    sendAgentMessage(msg);
+  }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setIsTyping, setIsCapturingLead, setFlowState]);
 
   const handleOptionClick = (option: string, messageId: string) => {
-    // Mark this message's options as selected
     setSelectedOptions(prev => new Set(prev).add(messageId));
 
-    if (option.toLowerCase().includes('connect') || option.toLowerCase().includes('team') || option.toLowerCase().includes('collect my details')) {
+    if (['connect', 'team', 'collect my details', 'speak to'].some(k => option.toLowerCase().includes(k))) {
       addMessage({ sender: 'user', text: option, type: 'text' });
       setIsTyping(true);
       setTimeout(() => {
         setIsTyping(false);
         setIsCapturingLead(true);
         setFlowState('lead-capture');
-        addMessage({ sender: 'bot', text: "Great! Let's get your details so the team can follow up. What's your name?", type: 'text' });
-      }, 800);
+        addMessage({ sender: 'bot', text: "Let's get your details so the team can follow up. What's your name?", type: 'text' });
+      }, 400);
       return;
     }
     handleSend(option);
@@ -222,13 +252,22 @@ export function ChatInterface() {
         text: `Great choice — ${product.name} is an excellent option. I'll pass this to the Astrabon team. First, what's your name?`,
         type: 'text',
       });
-    }, 900);
+    }, 600);
   };
+
+  // ─── AGENT UNAVAILABLE BANNER ────────────────────────────────────────────────
+  const agentBanner = agentStatus === 'unavailable' && (
+    <div className="mx-4 mt-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-error/10 border border-error/25 text-[11px] text-error">
+      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+      Dhon is currently unreachable. Please try again shortly.
+    </div>
+  );
 
   // ─── WELCOME SCREEN ───────────────────────────────────────────────────────────
   if (chatHistory.length === 0) {
     return (
       <div className="flex flex-col h-full">
+        {agentBanner}
         <div className="flex-1 flex flex-col justify-end px-5 pb-5 overflow-y-auto no-scrollbar">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -240,7 +279,7 @@ export function ChatInterface() {
               <div className="w-9 h-9 rounded-full border border-primary/25 overflow-hidden">
                 <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
               </div>
-              <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%]">
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%] min-w-0 break-words">
                 👋 Hi! I&#39;m Dhon, your Astrabon assistant. I can help you find the right kitchenware, cookware, coffee essentials, glassware, and more.
                 <br /><br />
                 <span className="text-primary font-medium">What are you shopping for today?</span>
@@ -248,7 +287,6 @@ export function ChatInterface() {
             </div>
           </motion.div>
 
-          {/* Quick Prompts */}
           <div className="grid grid-cols-2 gap-2 mb-2">
             {WELCOME_PROMPTS.map((prompt, i) => (
               <motion.button
@@ -257,7 +295,8 @@ export function ChatInterface() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 + i * 0.06 }}
                 onClick={() => handleSend(prompt.label)}
-                className="flex items-center gap-2 p-3 rounded-xl bg-surface-alt/60 border border-border-subtle hover:border-primary/40 hover:bg-primary/8 text-left transition-all group"
+                disabled={isStreaming || agentStatus === 'unavailable'}
+                className="flex items-center gap-2 p-3 rounded-xl bg-surface-alt/60 border border-border-subtle hover:border-primary/40 hover:bg-primary/8 text-left transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span className="text-base">{prompt.icon}</span>
                 <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors leading-snug">
@@ -268,15 +307,11 @@ export function ChatInterface() {
           </div>
         </div>
 
-        {/* Input */}
         <InputBar
           value={inputValue}
           onChange={setInputValue}
           onSend={() => handleSend()}
-          onDemoStep={isDemoMode ? runDemoStep : undefined}
-          isDemoMode={isDemoMode}
-          demoStep={demoStep}
-          demoTotal={DEMO_SCRIPT.length}
+          disabled={isStreaming || agentStatus === 'unavailable'}
         />
       </div>
     );
@@ -285,6 +320,7 @@ export function ChatInterface() {
   // ─── CHAT SCREEN ──────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
+      {agentBanner}
       <div className="flex-1 px-5 pt-5 pb-3 overflow-y-auto no-scrollbar space-y-4">
         {chatHistory.map((msg) => {
           const isOptionSelected = selectedOptions.has(msg.id);
@@ -295,14 +331,14 @@ export function ChatInterface() {
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
             >
-              {/* Bot Avatar for bot messages */}
+              {/* Bot text / options bubble */}
               {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && (
                 <div className="flex items-end gap-2">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
                     <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
                   </div>
-                  <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
-                    <p className="text-sm text-text-primary font-light leading-relaxed whitespace-pre-line">{msg.text}</p>
+                  <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0">
+                    <MarkdownText text={msg.text} />
                   </div>
                 </div>
               )}
@@ -321,9 +357,9 @@ export function ChatInterface() {
                     <button
                       key={opt}
                       onClick={() => handleOptionClick(opt, msg.id)}
-                      disabled={isOptionSelected}
+                      disabled={isOptionSelected || isStreaming}
                       className={`px-3 py-1.5 rounded-full border text-xs transition-all duration-300 ${
-                        isOptionSelected
+                        isOptionSelected || isStreaming
                           ? 'bg-surface-alt/30 border-border-subtle text-text-muted/50 cursor-default'
                           : 'bg-surface-alt/60 border-border-subtle text-text-secondary hover:bg-primary hover:text-text-on-primary hover:border-primary'
                       }`}
@@ -336,14 +372,14 @@ export function ChatInterface() {
 
               {/* Product cards */}
               {msg.type === 'product-cards' && msg.products && (
-                <div className="w-full mt-2 pl-9">
+                <div className="w-full mt-2">
                   {msg.text && msg.sender === 'bot' && (
                     <div className="flex items-end gap-2 mb-3">
                       <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0">
                         <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
                       </div>
-                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
-                        <p className="text-sm text-text-primary font-light leading-relaxed whitespace-pre-line">{msg.text}</p>
+                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] min-w-0">
+                        <MarkdownText text={msg.text} />
                       </div>
                     </div>
                   )}
@@ -354,9 +390,9 @@ export function ChatInterface() {
                         <button
                           key={opt}
                           onClick={() => handleOptionClick(opt, msg.id)}
-                          disabled={isOptionSelected}
+                          disabled={isOptionSelected || isStreaming}
                           className={`px-3 py-1.5 rounded-full border text-xs transition-all duration-300 ${
-                            isOptionSelected
+                            isOptionSelected || isStreaming
                               ? 'bg-surface-alt/30 border-border-subtle text-text-muted/50 cursor-default'
                               : 'bg-surface-alt/60 border-border-subtle text-text-secondary hover:bg-primary hover:text-text-on-primary hover:border-primary'
                           }`}
@@ -379,7 +415,7 @@ export function ChatInterface() {
           );
         })}
 
-        {/* Typing Indicator */}
+        {/* Typing / streaming indicator */}
         <AnimatePresence>
           {isTyping && (
             <motion.div
@@ -387,7 +423,7 @@ export function ChatInterface() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
             >
-              <TypingIndicator />
+              <TypingIndicator toolName={activeToolName} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -402,11 +438,7 @@ export function ChatInterface() {
         value={inputValue}
         onChange={setInputValue}
         onSend={() => handleSend()}
-        onDemoStep={isDemoMode ? runDemoStep : undefined}
-        isDemoMode={isDemoMode}
-        demoStep={demoStep}
-        demoTotal={DEMO_SCRIPT.length}
-        disabled={isCapturingLead}
+        disabled={isCapturingLead || isStreaming || agentStatus === 'unavailable'}
       />
     </div>
   );
@@ -414,15 +446,11 @@ export function ChatInterface() {
 
 // ─── Input Bar ────────────────────────────────────────────────────────────────
 function InputBar({
-  value, onChange, onSend, onDemoStep, isDemoMode, demoStep, demoTotal, disabled
+  value, onChange, onSend, disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
-  onDemoStep?: () => void;
-  isDemoMode?: boolean;
-  demoStep?: number;
-  demoTotal?: number;
   disabled?: boolean;
 }) {
   const handleKey = (e: React.KeyboardEvent) => {
@@ -434,14 +462,6 @@ function InputBar({
 
   return (
     <div className="p-4 border-t border-border-subtle bg-surface/60 backdrop-blur-md shrink-0">
-      {isDemoMode && onDemoStep && (demoStep ?? 0) < (demoTotal ?? 0) && (
-        <button
-          onClick={onDemoStep}
-          className="w-full mb-3 py-2 rounded-xl bg-primary/15 border border-primary/25 text-primary text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-text-on-primary transition-all"
-        >
-          ▶ Run Next Demo Step ({(demoStep ?? 0) + 1}/{demoTotal})
-        </button>
-      )}
       <div className="relative">
         <input
           type="text"
@@ -471,6 +491,3 @@ function InputBar({
     </div>
   );
 }
-
-// Type for ChatMessage used in the component (local reference)
-type ChatMessage = import('@/types').ChatMessage;
