@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Minimize2, Maximize2 } from 'lucide-react';
+import { MessageSquare, X, Minimize2, Maximize2, MessageSquarePlus } from 'lucide-react';
 import { AstrabonProvider, useAstrabon } from './AstrabonContext';
 import { ChatInterface } from './ChatInterface';
 
@@ -11,6 +11,8 @@ function WidgetContent() {
   const {
     isExpanded, setIsExpanded,
     agentStatus,
+    resetChat, isStreaming,
+    messageCount, isCapturingLead,
   } = useAstrabon();
 
   const [showLoader, setShowLoader] = useState(false);
@@ -76,6 +78,17 @@ function WidgetContent() {
               </div>
 
               <div className="flex items-center gap-1.5">
+                {/* New chat */}
+                <button
+                  type="button"
+                  onClick={() => resetChat()}
+                  disabled={isStreaming || (messageCount === 0 && !isCapturingLead)}
+                  title="New chat"
+                  className="w-7 h-7 rounded-lg bg-surface-100 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                </button>
+
                 {/* Fullscreen toggle (desktop only) */}
                 <button
                   onClick={() => setIsFullscreen(!isFullscreen)}

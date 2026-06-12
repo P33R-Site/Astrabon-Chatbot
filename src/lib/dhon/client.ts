@@ -1,5 +1,5 @@
 import { parseSseStream } from './parseSse';
-import type { ChatRequest, SessionMessagesResponse, StreamEvent } from './types';
+import type { ChatRequest, ChatResponse, SessionMessagesResponse, StreamEvent } from './types';
 
 function apiBase(): string {
   // In production server-side proxy is used. If NEXT_PUBLIC_DHON_API_URL is set
@@ -48,4 +48,21 @@ export async function streamChat(
   for await (const event of parseSseStream(res.body)) {
     onEvent(event);
   }
+}
+
+export async function postChat(request: ChatRequest): Promise<ChatResponse> {
+  const res = await fetch(`${apiBase()}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(
+      typeof err.detail === 'string' ? err.detail : `Chat failed (${res.status})`,
+    );
+  }
+
+  return res.json() as Promise<ChatResponse>;
 }

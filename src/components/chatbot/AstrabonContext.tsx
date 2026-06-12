@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import type { ChatMessage, FlowState, BuyerType, LeadData } from '@/types';
 import { getStoredSessionId, setStoredSessionId, clearStoredSessionId } from '@/lib/dhon/session';
 
@@ -15,7 +15,11 @@ interface AstrabonContextType {
   chatHistory: ChatMessage[];
   addMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
   updateMessage: (id: string, patch: Partial<Omit<ChatMessage, 'id' | 'timestamp'>>) => void;
+  removeMessage: (id: string) => void;
   clearHistory: () => void;
+  resetChat: () => void;
+  chatEpoch: number;
+  registerChatCleanup: (fn: () => void) => () => void;
 
   // Session
   sessionId: string | null;
@@ -64,6 +68,7 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionIdState] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('checking');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [chatEpoch, setChatEpoch] = useState(0);
   const [flowState, setFlowState] = useState<FlowState>('welcome');
   const [buyerType, setBuyerType] = useState<BuyerType>(null);
   const [productCategory, setProductCategory] = useState<string | null>(null);
@@ -71,6 +76,8 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
   const [leadData, setLeadData] = useState<LeadData>({});
   const [isCapturingLead, setIsCapturingLead] = useState(false);
   const [leadStep, setLeadStep] = useState<'name' | 'businessName' | 'email' | 'phone' | 'done'>('name');
+
+  const cleanupHandlersRef = useRef<Set<() => void>>(new Set());
 
   // Hydrate session from localStorage on mount
   useEffect(() => {
@@ -101,6 +108,10 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const removeMessage = useCallback((id: string) => {
+    setChatHistory(prev => prev.filter(m => m.id !== id));
+  }, []);
+
   const clearHistory = useCallback(() => {
     setChatHistory([]);
     setFlowState('welcome');
@@ -113,12 +124,27 @@ export function AstrabonProvider({ children }: { children: React.ReactNode }) {
     setSessionId(null);
   }, [setSessionId]);
 
+  const registerChatCleanup = useCallback((fn: () => void) => {
+    cleanupHandlersRef.current.add(fn);
+    return () => {
+      cleanupHandlersRef.current.delete(fn);
+    };
+  }, []);
+
+  const resetChat = useCallback(() => {
+    cleanupHandlersRef.current.forEach(fn => fn());
+    setIsStreaming(false);
+    setChatEpoch(e => e + 1);
+    clearHistory();
+  }, [clearHistory]);
+
   const messageCount = chatHistory.length;
 
   return (
     <AstrabonContext.Provider value={{
       isExpanded, setIsExpanded,
-      chatHistory, addMessage, updateMessage, clearHistory,
+      chatHistory, addMessage, updateMessage, removeMessage, clearHistory, resetChat,
+      chatEpoch, registerChatCleanup,
       sessionId, setSessionId,
       agentStatus, setAgentStatus,
       isStreaming, setIsStreaming,

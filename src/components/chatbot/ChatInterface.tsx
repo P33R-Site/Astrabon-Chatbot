@@ -2,16 +2,16 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, AlertTriangle } from 'lucide-react';
+import { Send, Mic, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useAstrabon } from './AstrabonContext';
 import { ProductCarousel } from './ProductCarousel';
 import { LeadCaptureFlow } from './LeadCaptureFlow';
 import { detectLeadTrigger } from '@/lib/leadTriggers';
 import { MarkdownText } from './MarkdownText';
-import { checkHealth, streamChat, getSessionMessages } from '@/lib/dhon/client';
+import { checkHealth, streamChat, getSessionMessages, postChat } from '@/lib/dhon/client';
 import { mapAgentProducts } from '@/lib/dhon/mapProduct';
 import type { AgentProductCard } from '@/lib/dhon/types';
-import type { ChatMessage, Product } from '@/types';
+import type { Product } from '@/types';
 
 const WELCOME_PROMPTS = [
   { label: 'Help me find cookware', icon: '🍳' },
@@ -22,21 +22,45 @@ const WELCOME_PROMPTS = [
   { label: 'Find coffee essentials', icon: '☕' },
 ];
 
+function isRecoverableAgentError(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('provider rejected') ||
+    lower.includes('openrouter') ||
+    lower.includes('rate limit') ||
+    lower.includes('something went wrong') ||
+    lower.includes('agent error') ||
+    lower.includes('try again')
+  );
+}
+
+function isProviderError(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes('provider') || lower.includes('openrouter');
+}
+
 
 export function ChatInterface() {
   const {
-    chatHistory, addMessage, updateMessage, isCapturingLead,
+    chatHistory, addMessage, updateMessage, removeMessage, isCapturingLead,
     setIsCapturingLead, setFlowState, setProductCategory,
     sessionId, setSessionId,
     agentStatus, setAgentStatus,
     isStreaming, setIsStreaming,
     buyerType, setBuyerType,
+    chatEpoch, registerChatCleanup,
   } = useAstrabon();
 
   const [inputValue, setInputValue] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const restoreAbortRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef(sessionId);
+  const chatEpochRef = useRef(chatEpoch);
+
+  sessionIdRef.current = sessionId;
+  chatEpochRef.current = chatEpoch;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,6 +69,16 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [chatHistory, scrollToBottom]);
+
+  // Register cleanup for resetChat
+  useEffect(() => {
+    return registerChatCleanup(() => {
+      abortRef.current?.abort();
+      restoreAbortRef.current?.abort();
+      setInputValue('');
+      setSelectedOptions(new Set());
+    });
+  }, [registerChatCleanup]);
 
   // Abort on unmount
   useEffect(() => () => { abortRef.current?.abort(); }, []);
@@ -56,52 +90,82 @@ export function ChatInterface() {
     });
   }, [setAgentStatus]);
 
-  // Restore session history on mount (if sessionId stored)
+  // Restore session history when sessionId hydrates or widget remounts
   useEffect(() => {
     if (!sessionId || chatHistory.length > 0) return;
-    getSessionMessages(sessionId).then(data => {
-      data.messages.forEach(m => {
-        if (m.role === 'user' || m.role === 'assistant') {
-          addMessage({
-            sender: m.role === 'user' ? 'user' : 'bot',
-            text: m.content,
-            type: 'text',
-          });
-        }
-      });
-    }).catch(() => {
-      // Session not found — clear stale id
-      setSessionId(null);
-    });
-  // Only run once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // Listen for external prompts (from category cards, hero CTA)
-  useEffect(() => {
-    const handleExternalPrompt = (e: CustomEvent) => {
-      if (e.detail?.prompt) handleSend(e.detail.prompt);
-    };
-    window.addEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
-    return () => window.removeEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCapturingLead, sessionId, isStreaming]);
+    restoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    restoreAbortRef.current = controller;
+    const targetSessionId = sessionId;
+    const epochAtStart = chatEpoch;
+
+    getSessionMessages(targetSessionId)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (epochAtStart !== chatEpochRef.current) return;
+        if (sessionIdRef.current !== targetSessionId) return;
+
+        data.messages.forEach(m => {
+          if (m.role === 'user' || m.role === 'assistant') {
+            addMessage({
+              sender: m.role === 'user' ? 'user' : 'bot',
+              text: m.content,
+              type: 'text',
+            });
+          }
+        });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSessionId(null);
+      });
+
+    return () => controller.abort();
+  }, [sessionId, chatHistory.length, chatEpoch, addMessage, setSessionId]);
 
   const sendAgentMessage = useCallback(async (text: string) => {
+    const epochAtStart = chatEpochRef.current;
     setIsStreaming(true);
 
-    // Add placeholder bot bubble and capture the ID returned by addMessage
     const botId = addMessage({ sender: 'bot', text: '', type: 'text' });
 
     let streamedText = '';
+    let receivedToken = false;
 
     abortRef.current = new AbortController();
 
+    const isStale = () => epochAtStart !== chatEpochRef.current;
+
+    const tryNonStreamFallback = async (): Promise<boolean> => {
+      if (receivedToken || isStale()) return false;
+      try {
+        const response = await postChat({
+          message: text,
+          session_id: sessionIdRef.current ?? undefined,
+        });
+        if (isStale()) return false;
+        if (response.session_id) setSessionId(response.session_id);
+        if (response.message) {
+          updateMessage(botId, { text: response.message });
+        }
+        if (response.products?.length) {
+          const products = mapAgentProducts(response.products);
+          updateMessage(botId, { type: 'product-cards', products });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     try {
       await streamChat(
-        { message: text, session_id: sessionId ?? undefined },
+        { message: text, session_id: sessionIdRef.current ?? undefined },
         (event) => {
+          if (isStale()) return;
+
           if (event.event === 'token' && typeof event.data.content === 'string') {
+            receivedToken = true;
             streamedText += event.data.content;
             updateMessage(botId, { text: streamedText });
           }
@@ -111,9 +175,7 @@ export function ChatInterface() {
           }
           if (event.event === 'done') {
             const sid = event.data.session_id as string | undefined;
-            if (sid) {
-              setSessionId(sid);
-            }
+            if (sid) setSessionId(sid);
             const finalMsg = event.data.message as string | undefined;
             if (!streamedText && finalMsg) {
               updateMessage(botId, { text: finalMsg });
@@ -126,13 +188,24 @@ export function ChatInterface() {
         abortRef.current.signal,
       );
     } catch (err) {
-      if ((err as Error)?.name === 'AbortError') return;
+      if ((err as Error)?.name === 'AbortError') {
+        removeMessage(botId);
+        return;
+      }
+      if (isStale()) {
+        removeMessage(botId);
+        return;
+      }
+
+      const fallbackOk = await tryNonStreamFallback();
+      if (fallbackOk) return;
+
       const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
       updateMessage(botId, { text: msg });
     } finally {
-      setIsStreaming(false);
+      if (!isStale()) setIsStreaming(false);
     }
-  }, [sessionId, setSessionId, addMessage, updateMessage, setIsStreaming]);
+  }, [addMessage, updateMessage, removeMessage, setSessionId, setIsStreaming]);
 
   const handleSend = useCallback((text?: string) => {
     const msg = (text ?? inputValue).trim();
@@ -182,6 +255,21 @@ export function ChatInterface() {
     sendAgentMessage(msg);
   }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setBuyerType, setIsCapturingLead, setFlowState]);
 
+  const handleRetry = useCallback((userText: string, botMessageId: string) => {
+    removeMessage(botMessageId);
+    sendAgentMessage(userText);
+  }, [removeMessage, sendAgentMessage]);
+
+  // Listen for external prompts (from category cards, hero CTA)
+  useEffect(() => {
+    const handleExternalPrompt = (e: CustomEvent) => {
+      if (e.detail?.prompt) handleSend(e.detail.prompt);
+    };
+    window.addEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
+    return () => window.removeEventListener('astrabon:send-prompt', handleExternalPrompt as EventListener);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCapturingLead, sessionId, isStreaming]);
+
   const handleOptionClick = (option: string, messageId: string) => {
     setSelectedOptions(prev => new Set(prev).add(messageId));
 
@@ -209,6 +297,17 @@ export function ChatInterface() {
         type: 'text',
       });
     }, 600);
+  };
+
+  const findPrecedingUserText = (botMsgId: string): string | null => {
+    const idx = chatHistory.findIndex(m => m.id === botMsgId);
+    if (idx <= 0) return null;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (chatHistory[i].sender === 'user' && chatHistory[i].text) {
+        return chatHistory[i].text;
+      }
+    }
+    return null;
   };
 
   // ─── AGENT UNAVAILABLE BANNER ────────────────────────────────────────────────
@@ -280,6 +379,9 @@ export function ChatInterface() {
       <div className="flex-1 px-5 pt-5 pb-3 overflow-y-auto no-scrollbar space-y-4">
         {chatHistory.map((msg) => {
           const isOptionSelected = selectedOptions.has(msg.id);
+          const precedingUserText = msg.sender === 'bot' ? findPrecedingUserText(msg.id) : null;
+          const showRetry = msg.sender === 'bot' && msg.text && isRecoverableAgentError(msg.text) && precedingUserText;
+
           return (
             <motion.div
               key={msg.id}
@@ -293,8 +395,28 @@ export function ChatInterface() {
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
                     <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
                   </div>
-                  <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0">
+                  <div className={`rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 ${
+                    isRecoverableAgentError(msg.text)
+                      ? 'bg-error/10 border border-error/25'
+                      : 'bg-primary/10 border border-primary/15'
+                  }`}>
                     <MarkdownText text={msg.text} />
+                    {showRetry && (
+                      <button
+                        type="button"
+                        onClick={() => handleRetry(precedingUserText!, msg.id)}
+                        disabled={isStreaming}
+                        className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary hover:text-amber-400 disabled:opacity-40 transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Try again
+                      </button>
+                    )}
+                    {isProviderError(msg.text) && (
+                      <p className="mt-2 text-[10px] text-text-muted leading-snug opacity-70">
+                        Technical details are shown above. If this keeps happening, check OpenRouter credits and DHON_MODEL.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
