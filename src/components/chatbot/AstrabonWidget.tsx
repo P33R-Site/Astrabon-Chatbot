@@ -84,9 +84,10 @@ function WidgetContent() {
                   onClick={() => resetChat()}
                   disabled={isStreaming || (messageCount === 0 && !isCapturingLead)}
                   title="New chat"
-                  className="w-7 h-7 rounded-lg bg-surface-100 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Start new chat"
+                  className="w-8 h-8 rounded-lg bg-primary border border-primary flex items-center justify-center text-text-on-primary shadow-[0_0_12px_rgba(200,152,94,0.45)] hover:bg-amber-400 hover:border-amber-400 transition-colors disabled:opacity-35 disabled:cursor-not-allowed disabled:bg-surface-100 disabled:border-border-subtle disabled:text-text-muted disabled:shadow-none"
                 >
-                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                  <MessageSquarePlus className="w-4 h-4 stroke-[2.75]" />
                 </button>
 
                 {/* Fullscreen toggle (desktop only) */}
