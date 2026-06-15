@@ -10,6 +10,7 @@ import { detectLeadTrigger } from '@/lib/leadTriggers';
 import { MarkdownText } from './MarkdownText';
 import { checkHealth, streamChat, getSessionMessages, postChat } from '@/lib/dhon/client';
 import { mapAgentProducts } from '@/lib/dhon/mapProduct';
+import { stripProductReply } from '@/lib/stripProductReply';
 import type { AgentProductCard } from '@/lib/dhon/types';
 import type { Product } from '@/types';
 
@@ -165,7 +166,11 @@ export function ChatInterface() {
         }
         if (response.products?.length) {
           const products = mapAgentProducts(response.products);
-          updateMessage(botId, { type: 'product-cards', products });
+          updateMessage(botId, {
+            type: 'product-cards',
+            products,
+            text: stripProductReply(response.message ?? ''),
+          });
         }
         return true;
       } catch {
@@ -182,18 +187,28 @@ export function ChatInterface() {
           if (event.event === 'token' && typeof event.data.content === 'string') {
             receivedToken = true;
             streamedText += event.data.content;
-            updateMessage(botId, { text: streamedText });
+            updateMessage(botId, {
+              text: streamedProducts.length ? stripProductReply(streamedText) : streamedText,
+            });
           }
           if (event.event === 'products' && Array.isArray(event.data.items)) {
             const incoming = mapAgentProducts(event.data.items as AgentProductCard[]);
             streamedProducts = mergeProducts(incoming);
-            updateMessage(botId, { type: 'product-cards', products: streamedProducts });
+            updateMessage(botId, {
+              type: 'product-cards',
+              products: streamedProducts,
+              text: stripProductReply(streamedText),
+            });
           }
           if (event.event === 'done') {
             const sid = event.data.session_id as string | undefined;
             if (sid) setSessionId(sid);
             const finalMsg = event.data.message as string | undefined;
-            if (!streamedText && finalMsg) {
+            if (streamedProducts.length > 0) {
+              updateMessage(botId, {
+                text: stripProductReply(finalMsg ?? streamedText),
+              });
+            } else if (!streamedText && finalMsg) {
               updateMessage(botId, { text: finalMsg });
             }
           }
@@ -464,41 +479,20 @@ export function ChatInterface() {
                 </div>
               )}
 
-              {/* Product cards */}
+              {/* Product carousel only — no duplicate text list */}
               {msg.type === 'product-cards' && msg.products && (
-                <div className="w-full mt-2">
-                  {msg.text && msg.sender === 'bot' && (
-                    <div className="flex items-end gap-2 mb-3 w-full">
-                      <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0">
-                        <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] min-w-0 overflow-hidden">
+                <div className="flex items-end gap-2 w-full mt-2">
+                  <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
+                    <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {msg.text?.trim() && (
+                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 overflow-hidden mb-3">
                         <MarkdownText text={msg.text} />
                       </div>
-                    </div>
-                  )}
-                  {/* pl-9 aligns carousel with the text bubble (avatar w-7 + gap-2) */}
-                  <div className="pl-9">
+                    )}
                     <ProductCarousel products={msg.products} onInquire={handleInquire} />
                   </div>
-                  {msg.options && (
-                    <div className="flex flex-wrap gap-2 mt-3 pl-9">
-                      {msg.options.map(opt => (
-                        <button
-                          key={opt}
-                          onClick={() => handleOptionClick(opt, msg.id)}
-                          disabled={isOptionSelected || isStreaming}
-                          className={`px-3 py-1.5 rounded-full border text-xs transition-all duration-300 ${
-                            isOptionSelected || isStreaming
-                              ? 'bg-surface-alt/30 border-border-subtle text-text-muted/50 cursor-default'
-                              : 'bg-surface-alt/60 border-border-subtle text-text-secondary hover:bg-primary hover:text-text-on-primary hover:border-primary'
-                          }`}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
 
