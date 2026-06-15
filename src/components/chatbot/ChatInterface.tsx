@@ -131,10 +131,25 @@ export function ChatInterface() {
 
     let streamedText = '';
     let receivedToken = false;
+    // Accumulate products across multiple tool calls (e.g. recommend + bundles),
+    // deduped by product id so the carousel never shows duplicates.
+    let streamedProducts: Product[] = [];
 
     abortRef.current = new AbortController();
 
     const isStale = () => epochAtStart !== chatEpochRef.current;
+
+    const mergeProducts = (incoming: Product[]): Product[] => {
+      const seen = new Set(streamedProducts.map(p => p.id));
+      const merged = [...streamedProducts];
+      for (const p of incoming) {
+        if (!seen.has(p.id)) {
+          merged.push(p);
+          seen.add(p.id);
+        }
+      }
+      return merged;
+    };
 
     const tryNonStreamFallback = async (): Promise<boolean> => {
       if (receivedToken || isStale()) return false;
@@ -170,8 +185,9 @@ export function ChatInterface() {
             updateMessage(botId, { text: streamedText });
           }
           if (event.event === 'products' && Array.isArray(event.data.items)) {
-            const products = mapAgentProducts(event.data.items as AgentProductCard[]);
-            updateMessage(botId, { type: 'product-cards', products });
+            const incoming = mapAgentProducts(event.data.items as AgentProductCard[]);
+            streamedProducts = mergeProducts(incoming);
+            updateMessage(botId, { type: 'product-cards', products: streamedProducts });
           }
           if (event.event === 'done') {
             const sid = event.data.session_id as string | undefined;
@@ -391,11 +407,11 @@ export function ChatInterface() {
             >
               {/* Bot text / options bubble — skip the empty placeholder while streaming */}
               {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && msg.text && (
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-2 w-full">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
                     <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
                   </div>
-                  <div className={`rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 ${
+                  <div className={`rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 overflow-hidden ${
                     isRecoverableAgentError(msg.text)
                       ? 'bg-error/10 border border-error/25'
                       : 'bg-primary/10 border border-primary/15'
@@ -423,7 +439,7 @@ export function ChatInterface() {
 
               {/* User message */}
               {msg.sender === 'user' && (
-                <div className="bg-surface-alt border border-border-subtle rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%]">
+                <div className="bg-surface-alt border border-border-subtle rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] overflow-hidden">
                   <p className="text-sm text-text-primary font-light">{msg.text}</p>
                 </div>
               )}
@@ -452,18 +468,21 @@ export function ChatInterface() {
               {msg.type === 'product-cards' && msg.products && (
                 <div className="w-full mt-2">
                   {msg.text && msg.sender === 'bot' && (
-                    <div className="flex items-end gap-2 mb-3">
+                    <div className="flex items-end gap-2 mb-3 w-full">
                       <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0">
                         <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
                       </div>
-                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] min-w-0">
+                      <div className="bg-primary/10 border border-primary/15 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] min-w-0 overflow-hidden">
                         <MarkdownText text={msg.text} />
                       </div>
                     </div>
                   )}
-                  <ProductCarousel products={msg.products} onInquire={handleInquire} />
+                  {/* pl-9 aligns carousel with the text bubble (avatar w-7 + gap-2) */}
+                  <div className="pl-9">
+                    <ProductCarousel products={msg.products} onInquire={handleInquire} />
+                  </div>
                   {msg.options && (
-                    <div className="flex flex-wrap gap-2 mt-3">
+                    <div className="flex flex-wrap gap-2 mt-3 pl-9">
                       {msg.options.map(opt => (
                         <button
                           key={opt}
