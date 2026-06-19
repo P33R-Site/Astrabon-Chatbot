@@ -14,12 +14,12 @@ import type { AgentProductCard } from '@/lib/dhon/types';
 import type { Product } from '@/types';
 
 const WELCOME_PROMPTS = [
-  { label: 'Help me find cookware', icon: '🍳' },
-  { label: "I'm buying for a restaurant or café", icon: '🏪' },
-  { label: 'Compare cookware materials', icon: '⚖️' },
-  { label: 'Show kitchen starter essentials', icon: '🔪' },
-  { label: 'Help me choose knives', icon: '🗡️' },
-  { label: 'Find coffee essentials', icon: '☕' },
+  { label: 'Shop Coffee Essentials', icon: '☕' },
+  { label: 'Find Knives & Cutlery', icon: '🔪' },
+  { label: 'Browse Glassware & Barware', icon: '🥂' },
+  { label: "I'm setting up a restaurant or café", icon: '🏪' },
+  { label: 'Buffet & Serving Equipment', icon: '🍽️' },
+  { label: 'Industrial Kitchen Equipment', icon: '🏭' },
 ];
 
 function isRecoverableAgentError(text: string): boolean {
@@ -238,7 +238,7 @@ export function ChatInterface() {
     }
 
     // Connect-to-team trigger
-    const connectKw = ['connect', 'team', 'speak to', 'contact', 'inquire', 'collect my details'];
+    const connectKw = ['connect me', 'talk to someone', 'speak to', 'collect my details'];
     if (connectKw.some(k => msg.toLowerCase().includes(k))) {
       setTimeout(() => {
         setIsCapturingLead(true);
@@ -335,9 +335,13 @@ export function ChatInterface() {
                 <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
               </div>
               <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%] min-w-0 break-words">
-                👋 Hi! I&#39;m Dhon, your Astrabon assistant. I can help you find the right kitchenware, cookware, coffee essentials, glassware, and more.
+                السلام عليكم
                 <br /><br />
-                <span className="text-primary font-medium">What are you shopping for today?</span>
+                Welcome to our online store!
+                <br /><br />
+                My name is Dhon, and I&#39;m your dedicated online assistant here to help with any inquiries.
+                <br /><br />
+                <span className="text-primary font-medium">How may I assist you today?</span>
               </div>
             </div>
           </motion.div>
