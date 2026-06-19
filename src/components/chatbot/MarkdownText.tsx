@@ -71,7 +71,9 @@ export function MarkdownText({ text, className = '' }: MarkdownTextProps) {
   const lines = text.split('\n');
 
   return (
-    <span className={`text-sm text-text-primary font-light leading-relaxed break-words ${className}`}>
+    <span className={`text-sm text-text-primary font-light leading-relaxed break-words overflow-wrap-anywhere ${className}`}
+      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+    >
       {lines.map((line, i) => (
         <React.Fragment key={i}>
           {renderInline(line, String(i))}
