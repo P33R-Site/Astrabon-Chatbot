@@ -13,6 +13,7 @@ import { mapAgentProducts } from '@/lib/dhon/mapProduct';
 import { stripProductReply } from '@/lib/stripProductReply';
 import type { AgentProductCard } from '@/lib/dhon/types';
 import type { Product } from '@/types';
+import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
 const WELCOME_PROMPTS = [
   { label: 'Help me find cookware', icon: '🍳' },
@@ -363,7 +364,7 @@ export function ChatInterface() {
           >
             <div className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 rounded-full border border-primary/25 overflow-hidden">
-                <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
               </div>
               <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%] min-w-0 break-words">
                 👋 Hi! I&#39;m Dhon, your Astrabon assistant. I can help you find the right kitchenware, cookware, coffee essentials, glassware, and more.
@@ -424,7 +425,7 @@ export function ChatInterface() {
               {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && msg.text && (
                 <div className="flex items-end gap-2 w-full">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
-                    <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                    <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
                   </div>
                   <div className={`rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 overflow-hidden ${
                     isRecoverableAgentError(msg.text)
@@ -483,7 +484,7 @@ export function ChatInterface() {
               {msg.type === 'product-cards' && msg.products && (
                 <div className="flex items-end gap-2 w-full mt-2">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
-                    <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                    <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
                     {msg.text?.trim() && (

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, X, Minimize2, Maximize2, MessageSquarePlus } from 'lucide-react';
 import { AstrabonProvider, useAstrabon } from './AstrabonContext';
 import { ChatInterface } from './ChatInterface';
+import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
 // ─── Widget Inner Content ─────────────────────────────────────────────────────
 function WidgetContent() {
@@ -68,11 +69,11 @@ function WidgetContent() {
             <div className="h-[58px] bg-surface-alt/40 backdrop-blur-xl border-b border-border-subtle flex items-center justify-between px-5 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full border border-primary/25 overflow-hidden relative">
-                  <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                  <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
                   <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-bg ${statusDot}`} />
                 </div>
                 <div>
-                  <h1 className="text-text-primary font-serif text-base tracking-wide leading-none mb-0.5">Dhon</h1>
+                  <h1 className="text-text-primary font-serif text-base tracking-wide leading-none mb-0.5">{BOT_NAME}</h1>
                   <p className="text-[10px] uppercase tracking-widest font-medium text-primary">Powered by PRV8 · Online</p>
                 </div>
               </div>
@@ -155,11 +156,11 @@ function WidgetContent() {
             className="relative flex items-center gap-3 bg-surface border border-border-subtle pl-2.5 pr-5 py-2.5 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.4)] hover:border-primary/40 hover:shadow-[0_8px_40px_rgba(200,152,94,0.25)] transition-all duration-300 group"
           >
             <div className="w-10 h-10 rounded-full border border-primary/25 shadow-md overflow-hidden relative group-hover:ring-2 group-hover:ring-primary/30 transition-all">
-              <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+              <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
               <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${statusDot}`} />
             </div>
             <div className="flex flex-col text-left">
-              <span className="text-text-primary text-sm font-semibold leading-none mb-0.5">Dhon</span>
+              <span className="text-text-primary text-sm font-semibold leading-none mb-0.5">{BOT_NAME}</span>
               <span className="text-[10px] text-primary uppercase tracking-widest font-bold">Chat with us</span>
             </div>
             <MessageSquare className="sr-only" />
