@@ -13,6 +13,7 @@ import { mapAgentProducts } from '@/lib/dhon/mapProduct';
 import { stripProductReply } from '@/lib/stripProductReply';
 import type { AgentProductCard } from '@/lib/dhon/types';
 import type { Product } from '@/types';
+import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
 const WELCOME_PROMPTS = [
   { label: 'Shop Coffee Essentials', icon: '☕' },
@@ -49,6 +50,7 @@ export function ChatInterface() {
     agentStatus, setAgentStatus,
     isStreaming, setIsStreaming,
     buyerType, setBuyerType,
+    setLeadData,
     chatEpoch, registerChatCleanup,
   } = useAstrabon();
 
@@ -266,6 +268,11 @@ export function ChatInterface() {
     // High-intent lead trigger
     const leadTrigger = detectLeadTrigger(msg);
     if (leadTrigger === 'high') {
+      setLeadData({
+        inquiryType: 'high_intent',
+        salesIntent: 'high',
+        interestNotes: msg,
+      });
       setTimeout(() => {
         setIsCapturingLead(true);
         setFlowState('lead-capture');
@@ -281,6 +288,10 @@ export function ChatInterface() {
     // Connect-to-team trigger
     const connectKw = ['connect me', 'talk to someone', 'speak to', 'collect my details'];
     if (connectKw.some(k => msg.toLowerCase().includes(k))) {
+      setLeadData({
+        inquiryType: 'connect_request',
+        interestNotes: msg,
+      });
       setTimeout(() => {
         setIsCapturingLead(true);
         setFlowState('lead-capture');
@@ -294,7 +305,7 @@ export function ChatInterface() {
     }
 
     sendAgentMessage(msg);
-  }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setBuyerType, setIsCapturingLead, setFlowState]);
+  }, [inputValue, isStreaming, isCapturingLead, addMessage, sendAgentMessage, setBuyerType, setIsCapturingLead, setFlowState, setLeadData]);
 
   const handleRetry = useCallback((userText: string, botMessageId: string) => {
     removeMessage(botMessageId);
@@ -316,6 +327,10 @@ export function ChatInterface() {
 
     if (['connect', 'team', 'collect my details', 'speak to'].some(k => option.toLowerCase().includes(k))) {
       addMessage({ sender: 'user', text: option, type: 'text' });
+      setLeadData({
+        inquiryType: 'connect_request',
+        interestNotes: option,
+      });
       setTimeout(() => {
         setIsCapturingLead(true);
         setFlowState('lead-capture');
@@ -327,7 +342,15 @@ export function ChatInterface() {
   };
 
   const handleInquire = (product: Product) => {
-    addMessage({ sender: 'user', text: `I'm interested in: ${product.name}`, type: 'text' });
+    const interestNotes = `I'm interested in: ${product.name}`;
+    addMessage({ sender: 'user', text: interestNotes, type: 'text' });
+    setLeadData({
+      inquiryType: 'product_inquire',
+      productItemId: product.id,
+      productName: product.name,
+      productCategory: product.category,
+      interestNotes,
+    });
     setTimeout(() => {
       setIsCapturingLead(true);
       setFlowState('lead-capture');
@@ -373,7 +396,7 @@ export function ChatInterface() {
           >
             <div className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 rounded-full border border-primary/25 overflow-hidden">
-                <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
               </div>
               <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%] min-w-0 break-words">
                 السلام عليكم
@@ -461,7 +484,7 @@ export function ChatInterface() {
               {msg.sender === 'bot' && (msg.type === 'text' || msg.type === 'options') && msg.text && (
                 <div className="flex items-end gap-2 w-full">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
-                    <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                    <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
                   </div>
                   <div className={`rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0 overflow-hidden ${
                     isRecoverableAgentError(msg.text)
@@ -520,7 +543,7 @@ export function ChatInterface() {
               {msg.type === 'product-cards' && msg.products && (
                 <div className="flex items-end gap-2 w-full mt-2">
                   <div className="w-7 h-7 rounded-full border border-primary/20 overflow-hidden shrink-0 mb-1">
-                    <img src="/chatbot/chatbot-avatar.jpeg" alt="Dhon" className="w-full h-full object-cover" />
+                    <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
                     {msg.text?.trim() && (

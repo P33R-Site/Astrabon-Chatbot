@@ -74,6 +74,13 @@ export interface LeadData {
   phone?: string;
   interest?: string;
   businessName?: string;
+  inquiryType?: 'product_inquire' | 'high_intent' | 'connect_request' | 'browse';
+  salesIntent?: 'high' | 'medium';
+  productItemId?: string;
+  productSku?: string;
+  productName?: string;
+  productCategory?: string;
+  interestNotes?: string;
 }
 
 export interface NavItem {

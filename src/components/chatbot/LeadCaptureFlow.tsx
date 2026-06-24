@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAstrabon } from './AstrabonContext';
+import { buildLeadPayload, submitLead } from '@/lib/dhon/submitLead';
 import { Loader2, User, Mail, Phone, Building2, Package } from 'lucide-react';
 
 export function LeadCaptureFlow() {
-  const { leadData, setLeadData, leadStep, setLeadStep, addMessage, setIsCapturingLead, setFlowState, buyerType } = useAstrabon();
+  const { leadData, setLeadData, leadStep, setLeadStep, addMessage, setIsCapturingLead, setFlowState, buyerType, sessionId } = useAstrabon();
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -62,11 +63,12 @@ export function LeadCaptureFlow() {
       setInputValue('');
     } else if (leadStep === 'phone') {
       setIsSubmitting(true);
-      const phone = inputValue.trim() || 'Not provided';
-      setLeadData({ ...leadData, phone });
-      addMessage({ sender: 'user', text: phone !== 'Not provided' ? phone : 'Skip', type: 'text' });
+      const phone = inputValue.trim() || undefined;
+      const finalLead = { ...leadData, phone };
+      setLeadData(finalLead);
+      addMessage({ sender: 'user', text: phone ?? 'Skip', type: 'text' });
 
-      setTimeout(() => {
+      const finish = () => {
         setIsSubmitting(false);
         setSubmitted(true);
         setLeadStep('done');
@@ -78,7 +80,23 @@ export function LeadCaptureFlow() {
           type: 'options',
           options: ['Browse more products', 'Compare materials', 'Ask another question'],
         });
-      }, 1200);
+      };
+
+      submitLead(
+        buildLeadPayload(finalLead, {
+          sessionId,
+          buyerType,
+          interestNotes: finalLead.interestNotes,
+        }),
+      )
+        .catch(() => {
+          addMessage({
+            sender: 'bot',
+            text: "We saved your details locally but couldn't reach our server. The team may not see this submission — please try again or contact Astrabon directly.",
+            type: 'text',
+          });
+        })
+        .finally(finish);
     }
   };
 
