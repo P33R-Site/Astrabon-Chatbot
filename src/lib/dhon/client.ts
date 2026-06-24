@@ -1,5 +1,5 @@
 import { parseSseStream } from './parseSse';
-import type { ChatRequest, ChatResponse, SessionMessagesResponse, StreamEvent } from './types';
+import type { ChatRequest, ChatResponse, FlashSaleResponse, SessionMessagesResponse, StreamEvent } from './types';
 
 function apiBase(): string {
   // In production server-side proxy is used. If NEXT_PUBLIC_DHON_API_URL is set
@@ -65,4 +65,14 @@ export async function postChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   return res.json() as Promise<ChatResponse>;
+}
+
+export async function fetchFlashSaleProducts(limit = 20): Promise<FlashSaleResponse> {
+  try {
+    const res = await fetch(`${apiBase()}/flash-sale?limit=${limit}`, { cache: 'no-store' });
+    if (!res.ok) return { items: [] };
+    return res.json() as Promise<FlashSaleResponse>;
+  } catch {
+    return { items: [] };
+  }
 }

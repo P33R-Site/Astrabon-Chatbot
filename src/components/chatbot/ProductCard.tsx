@@ -25,6 +25,15 @@ const BADGE_COLORS: Record<string, string> = {
   'Industrial Grade': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
 };
 
+function getBadgeClass(badge: string): string {
+  if (BADGE_COLORS[badge]) return BADGE_COLORS[badge];
+  // Flash sale badges like "🔥 30% OFF"
+  if (badge.includes('%') || badge.includes('OFF') || badge.startsWith('🔥')) {
+    return 'bg-amber-500/25 text-amber-300 border-amber-500/40';
+  }
+  return 'bg-primary/20 text-primary border-primary/30';
+}
+
 export function ProductCard({ product, onInquire, compact = false }: ProductCardProps) {
   const [imageSrc, setImageSrc] = useState(product.image || PRODUCT_IMAGE_PLACEHOLDER);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -36,7 +45,7 @@ export function ProductCard({ product, onInquire, compact = false }: ProductCard
   }, [product.id, product.image]);
 
   const badgeClass = product.badge
-    ? (BADGE_COLORS[product.badge] || 'bg-primary/20 text-primary border-primary/30')
+    ? getBadgeClass(product.badge)
     : '';
 
   return (

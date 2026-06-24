@@ -8,3 +8,4 @@ export function detectLeadTrigger(input: string): 'high' | 'medium' | null {
   if (contains(t, ['price', 'cost', 'available', 'availability', 'in stock', 'deliver', 'how long', 'when can'])) return 'medium';
   return null;
 }
+  

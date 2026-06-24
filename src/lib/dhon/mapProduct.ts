@@ -32,19 +32,34 @@ function resolveProductImage(imageUrl?: string | null): string {
 }
 
 export function mapAgentProduct(card: AgentProductCard): Product {
+  const isOnSale = card.discount_percent != null && card.discount_percent > 0;
+
+  const displayPrice = isOnSale && card.discounted_price
+    ? card.discounted_price
+    : card.price;
+
   const priceRange =
-    card.price && card.currency
-      ? `${card.currency} ${card.price}`
-      : card.price ?? undefined;
+    displayPrice && card.currency
+      ? `${card.currency} ${displayPrice}`
+      : displayPrice ?? undefined;
+
+  const badge = card.badge
+    ? card.badge
+    : isOnSale
+    ? `🔥 ${Math.round(card.discount_percent!)}% OFF`
+    : undefined;
 
   return {
     id: card.item_id,
     name: card.name,
     category: normalizeCategory(card.category),
     description: card.name,
-    benefit: card.in_stock ? 'In stock' : 'Stock Arriving Soon',
+    benefit: isOnSale
+      ? `Save ${Math.round(card.discount_percent!)}% — limited time`
+      : card.in_stock ? 'In stock' : 'Stock Arriving Soon',
     tags: ([card.category].filter(Boolean) as string[]).slice(0, 3),
     image: resolveProductImage(card.image_url),
+    badge,
     priceRange,
     productUrl: card.product_url ?? undefined,
   };

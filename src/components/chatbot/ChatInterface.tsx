@@ -2,13 +2,13 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Send, Mic, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
 import { useAstrabon } from './AstrabonContext';
 import { ProductCarousel } from './ProductCarousel';
 import { LeadCaptureFlow } from './LeadCaptureFlow';
 import { detectLeadTrigger } from '@/lib/leadTriggers';
 import { MarkdownText } from './MarkdownText';
-import { checkHealth, streamChat, getSessionMessages, postChat } from '@/lib/dhon/client';
+import { checkHealth, fetchFlashSaleProducts, streamChat, getSessionMessages, postChat } from '@/lib/dhon/client';
 import { mapAgentProducts } from '@/lib/dhon/mapProduct';
 import { stripProductReply } from '@/lib/stripProductReply';
 import type { AgentProductCard } from '@/lib/dhon/types';
@@ -54,6 +54,7 @@ export function ChatInterface() {
 
   const [inputValue, setInputValue] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
+  const [flashSaleProducts, setFlashSaleProducts] = useState<Product[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const restoreAbortRef = useRef<AbortController | null>(null);
@@ -90,6 +91,15 @@ export function ChatInterface() {
       setAgentStatus(ok ? 'ready' : 'unavailable');
     });
   }, [setAgentStatus]);
+
+  // Load flash-sale products for welcome screen
+  useEffect(() => {
+    fetchFlashSaleProducts(20).then(data => {
+      if (data.items.length > 0) {
+        setFlashSaleProducts(mapAgentProducts(data.items));
+      }
+    });
+  }, []);
 
   // Restore session history when sessionId hydrates or widget remounts
   useEffect(() => {
@@ -376,6 +386,29 @@ export function ChatInterface() {
               </div>
             </div>
           </motion.div>
+
+          {/* ─── Flash Sale Carousel ──────────────────────────────────────────────── */}
+          <AnimatePresence>
+            {flashSaleProducts.length > 0 && (
+              <motion.div
+                key="flash-sale"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ delay: 0.25 }}
+                className="mb-5"
+              >
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    Flash Sale
+                  </span>
+                  <span className="text-[10px] text-text-muted ml-1">— limited time deals</span>
+                </div>
+                <ProductCarousel products={flashSaleProducts} onInquire={handleInquire} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="grid grid-cols-2 gap-2 mb-2">
             {WELCOME_PROMPTS.map((prompt, i) => (

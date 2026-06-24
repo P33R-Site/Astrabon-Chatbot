@@ -13,6 +13,9 @@ export interface AgentProductCard {
   image_url?: string | null;
   product_url?: string | null;
   category?: string | null;
+  discount_percent?: number | null;
+  discounted_price?: string | null;
+  badge?: string | null;
 }
 
 export interface ChatResponse {
@@ -45,4 +48,8 @@ export interface SessionMessage {
 export interface SessionMessagesResponse {
   session_id: string;
   messages: SessionMessage[];
+}
+
+export interface FlashSaleResponse {
+  items: AgentProductCard[];
 }
