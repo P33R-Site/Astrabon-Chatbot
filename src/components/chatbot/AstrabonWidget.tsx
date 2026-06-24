@@ -57,13 +57,14 @@ function WidgetContent() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 10 }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className={`fixed z-[9001] overflow-hidden flex flex-col glass-panel border border-border-subtle shadow-2xl transition-all duration-500
+            className={`fixed z-[9001] overflow-hidden flex flex-col min-h-0 glass-panel border border-border-subtle shadow-2xl transition-all duration-500 overscroll-contain
               ${isFullscreen
                 ? 'inset-[3vw] top-[5vh] bottom-[5vh] w-auto h-auto rounded-[28px]'
                 : 'max-md:inset-0 max-md:w-full max-md:h-[100dvh] max-md:rounded-none md:bottom-6 md:right-6 md:w-[400px] md:h-[680px] md:rounded-[28px]'
               }
             `}
             style={{ background: 'color-mix(in srgb, var(--color-bg) 97%, transparent)', transformOrigin: 'bottom right' }}
+            onWheel={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="h-[58px] bg-surface-alt/40 backdrop-blur-xl border-b border-border-subtle flex items-center justify-between px-5 shrink-0">
@@ -110,7 +111,7 @@ function WidgetContent() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 relative overflow-hidden">
+            <div className="flex-1 min-h-0 relative overflow-hidden">
               <AnimatePresence mode="wait">
                 {showLoader ? (
                   <motion.div
@@ -132,7 +133,7 @@ function WidgetContent() {
                     key="chat"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="h-full relative z-10 flex flex-col"
+                    className="h-full min-h-0 relative z-10 flex flex-col overflow-hidden"
                   >
                     <ChatInterface />
                   </motion.div>
