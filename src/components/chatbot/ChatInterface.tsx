@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, AlertTriangle, RotateCcw, Zap } from 'lucide-react';
+import { Send, Mic, AlertTriangle, RotateCcw, Zap, ChevronDown } from 'lucide-react';
 import { useAstrabon } from './AstrabonContext';
 import { ProductCarousel } from './ProductCarousel';
 import { LeadCaptureFlow } from './LeadCaptureFlow';
@@ -57,6 +57,8 @@ export function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [flashSaleProducts, setFlashSaleProducts] = useState<Product[]>([]);
+  const [showScrollHint, setShowScrollHint] = useState(true);
+  const promptsScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const restoreAbortRef = useRef<AbortController | null>(null);
@@ -81,8 +83,27 @@ export function ChatInterface() {
       restoreAbortRef.current?.abort();
       setInputValue('');
       setSelectedOptions(new Set());
+      setShowScrollHint(true);
     });
   }, [registerChatCleanup]);
+
+  const updateScrollHint = useCallback(() => {
+    const el = promptsScrollRef.current;
+    if (!el) return;
+    const canScroll = el.scrollHeight > el.clientHeight + 4;
+    const scrolled = el.scrollTop > 8;
+    setShowScrollHint(canScroll && !scrolled);
+  }, []);
+
+  useEffect(() => {
+    if (chatHistory.length > 0) return;
+    updateScrollHint();
+    const el = promptsScrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateScrollHint);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [chatHistory.length, flashSaleProducts.length, updateScrollHint]);
 
   // Abort on unmount
   useEffect(() => () => { abortRef.current?.abort(); }, []);
@@ -385,17 +406,19 @@ export function ChatInterface() {
   // ─── WELCOME SCREEN ───────────────────────────────────────────────────────────
   if (chatHistory.length === 0) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {agentBanner}
-        <div className="flex-1 flex flex-col justify-end px-5 pb-5 overflow-y-auto no-scrollbar">
+
+        {/* Hero — greeting + flash sale, always visible */}
+        <div className="shrink-0 px-5 pt-4 pb-2">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="mb-6"
+            className="mb-4"
           >
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-full border border-primary/25 overflow-hidden">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-full border border-primary/25 overflow-hidden shrink-0">
                 <img src={BOT_AVATAR_URL} alt={BOT_NAME} className="w-full h-full object-cover" />
               </div>
               <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-text-primary font-light leading-relaxed max-w-[85%] min-w-0 break-words">
@@ -410,7 +433,6 @@ export function ChatInterface() {
             </div>
           </motion.div>
 
-          {/* ─── Flash Sale Carousel ──────────────────────────────────────────────── */}
           <AnimatePresence>
             {flashSaleProducts.length > 0 && (
               <motion.div
@@ -419,7 +441,6 @@ export function ChatInterface() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ delay: 0.25 }}
-                className="mb-5"
               >
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
@@ -432,8 +453,42 @@ export function ChatInterface() {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-2">
+        {/* Scroll hint + fade between hero and prompts */}
+        <div className="relative shrink-0 px-5">
+          <div
+            className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-b from-transparent to-surface/80"
+            aria-hidden
+          />
+          <AnimatePresence>
+            {showScrollHint && (
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => {
+                  promptsScrollRef.current?.scrollBy({ top: 140, behavior: 'smooth' });
+                }}
+                className="w-full flex flex-col items-center gap-0.5 py-1.5 text-text-muted hover:text-primary transition-colors"
+                aria-label="Scroll for topic suggestions"
+              >
+                <span className="text-[10px] font-medium tracking-wide uppercase">Browse topics</span>
+                <ChevronDown className="w-4 h-4 animate-bounce" />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Quick prompts — scroll to discover */}
+        <div
+          ref={promptsScrollRef}
+          onScroll={updateScrollHint}
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-5 pb-3"
+        >
+          <div className="grid grid-cols-2 gap-2 pt-1">
             {WELCOME_PROMPTS.map((prompt, i) => (
               <motion.button
                 key={prompt.label}
