@@ -15,6 +15,8 @@ import type { AgentProductCard } from '@/lib/dhon/types';
 import type { Product } from '@/types';
 import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
+const ENABLE_WELCOME_FLASH_SALE = false;
+
 function isRecoverableAgentError(text: string): boolean {
   const lower = text.toLowerCase();
   return (
@@ -87,6 +89,10 @@ export function ChatInterface() {
 
   // Load flash-sale products for welcome screen
   useEffect(() => {
+    if (!ENABLE_WELCOME_FLASH_SALE) {
+      setFlashSaleProducts([]);
+      return;
+    }
     fetchFlashSaleProducts(20).then(data => {
       if (data.items.length > 0) {
         setFlashSaleProducts(mapAgentProducts(data.items));
@@ -406,7 +412,7 @@ export function ChatInterface() {
           </motion.div>
 
           <AnimatePresence>
-            {flashSaleProducts.length > 0 && (
+            {ENABLE_WELCOME_FLASH_SALE && flashSaleProducts.length > 0 && (
               <motion.div
                 key="flash-sale"
                 initial={{ opacity: 0, y: 12 }}
