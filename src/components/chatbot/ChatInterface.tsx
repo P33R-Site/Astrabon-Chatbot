@@ -16,6 +16,12 @@ import type { Product } from '@/types';
 import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
 const ENABLE_WELCOME_FLASH_SALE = false;
+const WELCOME_PROMPTS = [
+  { label: 'Shop Coffee Essentials', icon: '☕' },
+  { label: 'Find Knives & Cutlery', icon: '🔪' },
+  { label: 'Browse Glassware & Barware', icon: '🥂' },
+  { label: "I'm setting up a restaurant or café", icon: '🏪' },
+];
 
 function isRecoverableAgentError(text: string): boolean {
   const lower = text.toLowerCase();
@@ -431,6 +437,25 @@ export function ChatInterface() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          <div className="grid grid-cols-2 gap-2 mt-4 pb-3">
+            {WELCOME_PROMPTS.map((prompt, i) => (
+              <motion.button
+                key={prompt.label}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3 + i * 0.06 }}
+                onClick={() => handleSend(prompt.label)}
+                disabled={isStreaming || agentStatus === 'unavailable'}
+                className="flex items-center gap-2 p-3 rounded-xl bg-surface-alt/60 border border-border-subtle hover:border-primary/40 hover:bg-primary/8 text-left transition-all group disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="text-base">{prompt.icon}</span>
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors leading-snug">
+                  {prompt.label}
+                </span>
+              </motion.button>
+            ))}
+          </div>
         </div>
 
         <InputBar
