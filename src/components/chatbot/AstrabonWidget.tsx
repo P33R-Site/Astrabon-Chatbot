@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, X, Minimize2, Maximize2, MessageSquarePlus } from 'lucide-react';
 import { AstrabonProvider, useAstrabon } from './AstrabonContext';
 import { ChatInterface } from './ChatInterface';
+import { PrivacyFooter } from './PrivacyFooter';
 import { BOT_NAME, BOT_AVATAR_URL } from '@/lib/chatbot/branding';
 
 // ─── Widget Inner Content ─────────────────────────────────────────────────────
@@ -140,6 +141,10 @@ function WidgetContent() {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Privacy footer — always rendered on widget init, independent of
+                chat state/session/API response. See PrivacyFooter.tsx. */}
+            <PrivacyFooter />
           </motion.div>
         )}
       </AnimatePresence>
